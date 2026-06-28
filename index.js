@@ -9,7 +9,11 @@ const crypto = require("crypto");
 
 const { initializeApp, cert } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
-const serviceAccount = require("./zap-shift-1499b-firebase-adminsdk-fbsvc-b9c46508ac.json");
+
+const decodedKey = Buffer.from(process.env.ADMIN_KEY, 'base64').toString('utf8');
+const serviceAccount = JSON.parse(decodedKey);
+
+// const serviceAccount = require(process.env.ADMIN_KEY);
 
 
 initializeApp({
@@ -53,10 +57,10 @@ const varifyFBToken = async (req, res, next) => {
         next();
     }
     catch (err) {
-       return res.status(401).send( { message: 'unauthorised access'} )
+        return res.status(401).send({ message: 'unauthorised access' })
     }
 
-  
+
 
 }
 
@@ -88,19 +92,19 @@ async function run() {
 
         // user related api
 
-        app.post('/users', async(req, res)=>{
-               const user = req.body;
-               user.role = 'user';
-               const email = user.email;
-               user.createdAt = new Date();
+        app.post('/users', async (req, res) => {
+            const user = req.body;
+            user.role = 'user';
+            const email = user.email;
+            user.createdAt = new Date();
 
-               const userExist = await userCollection.findOne({ email})
-               if(userExist){
-                return res.send({ message: 'user exist'})
-               }
+            const userExist = await userCollection.findOne({ email })
+            if (userExist) {
+                return res.send({ message: 'user exist' })
+            }
 
-               const result = await userCollection.insertOne(user);
-               res.send(result);
+            const result = await userCollection.insertOne(user);
+            res.send(result);
         })
 
         // parcel API
@@ -265,32 +269,65 @@ async function run() {
                 query.customerEmail = email;
 
                 // check email adress
-                if(email !== req.decoded_email){
-                    return res.status(403).send({message: 'forbidden access'})
+                if (email !== req.decoded_email) {
+                    return res.status(403).send({ message: 'forbidden access' })
                 }
             }
-            const cursor = paymentCollection.find(query).sort({paidAt: -1});
+            const cursor = paymentCollection.find(query).sort({ paidAt: -1 });
             const result = await cursor.toArray();
             res.send(result);
         })
 
         // rider related  API
-        app.get('/riders', async(req, res)=>{
-            const query = { }
-            if(req.query.status){
+        app.get('/riders', async (req, res) => {
+            const query = {}
+            if (req.query.status) {
                 query.status = req.query.status;
             }
-            const curson = riderCollection.find(query);
-            const result =await cursor.toArray();
+            const cursor = riderCollection.find(query);
+            const result = await cursor.toArray();
             res.send(result);
         })
 
-        app.post('/riders', async(req, res) =>{
+        app.post('/riders', async (req, res) => {
             const rider = req.body;
             rider.status = 'pending';
             rider.createdAt = new Date();
             const result = await riderCollection.insertOne(rider);
             res.send(result);
+        })
+
+        app.patch('/riders/:id', varifyFBToken, async (req, res) => {
+            const status = req.body.status;
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+                    status: status
+                }
+            }
+
+            if(status === 'approved'){
+                const email = req.body.email;
+                const userQuery = {email}
+                const updateUser = {
+                    $set:{
+                        role: 'rider'
+                    }
+                }
+                const userResult = await userCollection.updateOne(userQuery, updateUser);
+            }
+
+            const result = await riderCollection.updateOne(query, updatedDoc);
+            res.send(result);
+        })
+
+        app.delete('/riders/:id', async(req, res)=>{
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id)};
+            const result = await riderCollection.deleteOne(query);
+            res.send(result);
+
         })
 
         // Send a ping to confirm a successful connection
